@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -63,6 +66,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -84,6 +89,7 @@ jobs:
             - 多选测试功能
             - 节点搜索功能
             - 窗口置顶功能
+            - GitHub 自动更新检查
             
             ### 修复问题
             - 测试过程中禁用页面切换
