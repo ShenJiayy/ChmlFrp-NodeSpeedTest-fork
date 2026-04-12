@@ -11,6 +11,14 @@ import {
   type SidebarMode,
 } from "./utils";
 import { AppearanceSection } from "./components/AppearanceSection";
+import { UpdateSection } from "./components/UpdateSection";
+import {
+  getCurrentVersion,
+  checkForUpdates,
+  openDownloadPage,
+  type UpdateInfo,
+} from "@/services/update";
+import { toast } from "sonner";
 
 export function Settings() {
   const isMacOS =
@@ -55,6 +63,14 @@ export function Settings() {
     getInitialSidebarMode(),
   );
 
+  const [currentVersion, setCurrentVersion] = useState<string>("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
+  useEffect(() => {
+    getCurrentVersion().then(setCurrentVersion);
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("showTitleBar", showTitleBar.toString());
     window.dispatchEvent(new Event("titleBarVisibilityChanged"));
@@ -98,6 +114,31 @@ export function Settings() {
     window.dispatchEvent(new Event("sidebarModeChanged"));
   }, [sidebarMode]);
 
+  const handleCheckUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    try {
+      const info = await checkForUpdates();
+      if (info) {
+        setUpdateInfo(info);
+        if (info.hasUpdate) {
+          toast.success(`发现新版本 v${info.latestVersion}`);
+        } else {
+          toast.success("当前已是最新版本");
+        }
+      } else {
+        toast.error("检查更新失败，请稍后重试");
+      }
+    } catch {
+      toast.error("检查更新失败，请稍后重试");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  const handleOpenDownload = useCallback((url: string) => {
+    openDownloadPage(url);
+  }, []);
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
@@ -105,6 +146,14 @@ export function Settings() {
       </div>
 
       <div className="flex-1 overflow-auto space-y-6">
+        <UpdateSection
+          checkingUpdate={checkingUpdate}
+          currentVersion={currentVersion}
+          onCheckUpdate={handleCheckUpdate}
+          updateInfo={updateInfo}
+          onOpenDownload={handleOpenDownload}
+        />
+
         <AppearanceSection
           isMacOS={isMacOS}
           isWindows={isWindows}
