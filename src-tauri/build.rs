@@ -74,6 +74,7 @@ fn frpc_layout(target_os: &str, target_arch: &str) -> Option<(&'static str, &'st
         ("windows", "x86_64") => Some(("x64", "frpc.exe")),
         ("linux", "x86_64") => Some(("amd64", "frpc")),
         ("macos", "aarch64") => Some(("aarch64", "frpc")),
+        ("macos", "x86_64") => Some(("x86_64", "frpc")),
         _ => None,
     }
 }
