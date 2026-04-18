@@ -59,6 +59,41 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
+## 🌿 分支管理
+
+| 分支 | 说明 |
+|------|------|
+| `main` | 开发分支，日常开发在此进行 |
+| `production` | 生产分支，稳定版本代码 |
+
+### 提交规范
+
+请遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范：
+
+- `feat:` 新功能
+- `fix:` 修复 Bug
+- `docs:` 文档更新
+- `style:` 代码格式调整
+- `refactor:` 代码重构
+- `chore:` 构建/工具变更
+
+### 合并到生产分支
+
+当 `main` 分支开发完成并测试通过后，合并到 `production` 分支：
+
+```bash
+# 切换到生产分支
+git checkout production
+
+# 合并开发分支
+git merge main
+
+# 推送到远程
+git push origin production
+```
+
+合并后会自动触发 GitHub Actions 构建并发布新版本。
+
 ## 📄 许可证
 
 [MIT License](LICENSE)
