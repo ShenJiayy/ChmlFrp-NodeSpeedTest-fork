@@ -1,15 +1,10 @@
-# ChmlFrp 节点推荐器
+# ChmlFrp Node Speed Test - Python Version
 
 <div align="center">
 
-
 **快速测试节点延迟，帮助用户选择最优节点**
 
-[![GitHub release](https://img.shields.io/github/v/release/zhengddzz/ChmlFrp-NodeSpeedTest?include_prereleases)](https://github.com/zhengddzz/ChmlFrp-NodeSpeedTest/releases)
-[![GitHub downloads](https://img.shields.io/github/downloads/zhengddzz/ChmlFrp-NodeSpeedTest/total)](https://github.com/zhengddzz/ChmlFrp-NodeSpeedTest/releases)
 [![License](https://img.shields.io/github/license/zhengddzz/ChmlFrp-NodeSpeedTest)](LICENSE)
-
-[下载最新版本](https://github.com/zhengddzz/ChmlFrp-NodeSpeedTest/releases/latest) | [问题反馈](https://github.com/zhengddzz/ChmlFrp-NodeSpeedTest/issues)
 
 </div>
 
@@ -24,30 +19,52 @@
 提供 VIP 节点、国内国外、UDP 支持等筛选条件，用户可根据自身网络环境和需求，精准定位符合要求的节点，提高效率。
 
 ### ⚡ 节点测速评估
-内置本地简单测速功能，对筛选后的节点进行延迟和丢包率检测，直观展示本地到节点的连接质量，辅助选择最优节点。
+内置本地简单测速功能，对筛选后的节点进行延迟和下载速度检测，直观展示本地到节点的连接质量，辅助选择最优节点。
 
 ### 📌 其他特性
-- **窗口置顶** - 方便随时查看测试进度
 - **结果持久化** - 测试结果自动保存
-- **自动更新** - 支持 GitHub 自动检查更新
+- **批量测试** - 支持批量测试多个节点
+- **历史记录** - 查看节点测试历史
 
-## 📥 下载安装
+## 📥 安装运行
 
-### Windows
-- 下载 `.msi` 或 `.exe` 安装包
-- 双击安装即可
+### 依赖要求
+- Python 3.7+
+- PyQt5
+- requests
 
-### macOS
-- 下载 `.dmg` 文件
-- 拖拽到应用程序文件夹
-
-### Linux
-- 下载 `.deb` 或 `.AppImage`
-- 根据发行版安装
+### 安装步骤
+1. 克隆或下载项目
+2. 安装依赖：
+```bash
+pip install -r requirements.txt
+```
+3. 运行应用：
+```bash
+python main.py
+```
 
 ## 🛠️ 技术栈
 
-- **前端**: React + TypeScript + Tailwind CSS
+- **GUI**: PyQt5
+- **网络**: requests
+- **打包**: PyInstaller
+
+## 📁 项目结构
+
+```
+├── main.py                 # 程序入口
+├── gui/                    # GUI组件
+│   ├── main_window.py      # 主窗口
+│   ├── widgets/           # 基础组件
+│   ├── pages/             # 页面组件
+│   └── dialogs/           # 对话框
+├── services/              # 业务服务
+│   ├── api_service.py     # API服务
+│   └── speed_test_service.py  # 测速服务
+├── config.json            # 配置文件
+└── requirements.txt       # 依赖文件
+```
 - **后端**: Rust + Tauri
 - **构建**: GitHub Actions
 
