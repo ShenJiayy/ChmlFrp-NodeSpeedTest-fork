@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Network, Play, RefreshCw, CheckCircle2, XCircle, Clock, Filter, History, Globe, Users, ArrowUpDown, ArrowUp, ArrowDown, Search, CheckSquare, Square, SquareX, Gauge, Download, Zap, Loader2 } from "lucide-react";
+import { Network, RefreshCw, CheckCircle2, XCircle, Clock, Filter, History, Globe, Users, ArrowUpDown, ArrowUp, ArrowDown, Search, CheckSquare, Square, SquareX, Gauge, Download, Zap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchNodes, fetchNodeInfo, type Node, type StoredUser } from "@/services/api";
 import { invoke } from "@tauri-apps/api/core";
@@ -427,33 +427,6 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
       saveTestResults(updatedNodes);
     }
   }, [user, addToHistory, saveTestResults]);
-
-  const testSelectedNodes = useCallback(async () => {
-    if (!user || visibleSelectedCount === 0) return;
-
-    try {
-      setTestingAll(true);
-      stopTestingRef.current = false;
-      const nodesToTest = filteredNodes.filter((n) => selectedNodeIds.has(n.id));
-
-      for (const node of nodesToTest) {
-        if (stopTestingRef.current) break;
-        await testSingleNode(node);
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      if (!stopTestingRef.current) {
-        toast.success(`已测试 ${nodesToTest.length} 个节点`);
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "测试过程中发生错误";
-      toast.error(message);
-    } finally {
-      setTestingAll(false);
-      stopTestingRef.current = false;
-    }
-  }, [user, filteredNodes, selectedNodeIds, testSingleNode, visibleSelectedCount]);
 
   const openBatchSpeedTestWithNodes = useCallback(() => {
     const nodesToTest = visibleSelectedCount > 0 
