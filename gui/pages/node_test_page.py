@@ -8,8 +8,8 @@ from PyQt5.QtGui import QFont, QIcon
 
 from services.api_service import APIService
 from services.speed_test_service import SpeedTestService
-from .batch_test_dialog import BatchTestDialog
-from .node_history_dialog import NodeHistoryDialog
+from gui.dialogs.batch_test_dialog import BatchTestDialog
+from gui.dialogs.node_history_dialog import NodeHistoryDialog
 
 class NodeTestPage(QWidget):
     def __init__(self, user):
