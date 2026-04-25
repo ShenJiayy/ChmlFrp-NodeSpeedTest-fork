@@ -1,20 +1,17 @@
 use crate::models::{FrpcProcesses, SpeedTestConfig};
-use crate::utils::resolve_frpc_path;
+use crate::utils::{resolve_frpc_path, get_app_data_dir};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
-use tauri::{Manager, State};
+use tauri::State;
 use log::{info, warn, error};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-fn generate_config_file(config: &SpeedTestConfig, app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let app_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("获取应用目录失败: {}", e))?;
+fn generate_config_file(config: &SpeedTestConfig) -> Result<std::path::PathBuf, String> {
+    let data_dir = get_app_data_dir()?;
 
-    let config_path = app_dir.join("speedtest_frpc.ini");
+    let config_path = data_dir.join("speedtest_frpc.ini");
 
     let config_content = format!(
         r#"[common]
@@ -95,7 +92,7 @@ pub async fn start_frpc(
         }
     }
     
-    let config_path = generate_config_file(&config, &app_handle)?;
+    let config_path = generate_config_file(&config)?;
     info!("[Frpc] Config file created at: {:?}", config_path);
 
     let mut cmd = Command::new(&frpc_path);

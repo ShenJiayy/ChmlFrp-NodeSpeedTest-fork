@@ -178,7 +178,37 @@ export function Settings() {
       </div>
 
       <div className="flex-1 overflow-auto space-y-6">
-        <UpdateSection
+        <AppearanceSection
+        isMacOS={isMacOS}
+        isWindows={isWindows}
+        followSystem={followSystem}
+        setFollowSystem={setFollowSystem}
+        theme={theme}
+        setTheme={setTheme}
+        isViewTransitionRef={isViewTransitionRef}
+        showTitleBar={showTitleBar}
+        setShowTitleBar={setShowTitleBar}
+        backgroundImage={backgroundImage}
+        isSelectingImage={isSelectingImage}
+        overlayOpacity={overlayOpacity}
+        setOverlayOpacity={setOverlayOpacity}
+        blur={blur}
+        setBlur={setBlur}
+        effectType={effectType}
+        setEffectType={setEffectType}
+        videoStartSound={videoStartSound}
+        setVideoStartSound={setVideoStartSound}
+        videoVolume={videoVolume}
+        setVideoVolume={setVideoVolume}
+        sidebarMode={sidebarMode}
+        setSidebarMode={handleSidebarModeChange}
+        tunnelSoundEnabled={false}
+        setTunnelSoundEnabled={() => {}}
+        onSelectBackgroundImage={handleSelectBackgroundImage}
+        onClearBackgroundImage={handleClearBackgroundImage}
+      />
+
+      <UpdateSection
           checkingUpdate={checkingUpdate}
           currentVersion={currentVersion}
           onCheckUpdate={handleCheckUpdate}
@@ -189,37 +219,7 @@ export function Settings() {
           autoCheckEnabled={autoCheckEnabled}
           onAutoCheckChange={handleAutoCheckChange}
         />
-
-        <AppearanceSection
-          isMacOS={isMacOS}
-          isWindows={isWindows}
-          followSystem={followSystem}
-          setFollowSystem={setFollowSystem}
-          theme={theme}
-          setTheme={setTheme}
-          isViewTransitionRef={isViewTransitionRef}
-          showTitleBar={showTitleBar}
-          setShowTitleBar={setShowTitleBar}
-          backgroundImage={backgroundImage}
-          isSelectingImage={isSelectingImage}
-          overlayOpacity={overlayOpacity}
-          setOverlayOpacity={setOverlayOpacity}
-          blur={blur}
-          setBlur={setBlur}
-          effectType={effectType}
-          setEffectType={setEffectType}
-          videoStartSound={videoStartSound}
-          setVideoStartSound={setVideoStartSound}
-          videoVolume={videoVolume}
-          setVideoVolume={setVideoVolume}
-          sidebarMode={sidebarMode}
-          setSidebarMode={handleSidebarModeChange}
-          tunnelSoundEnabled={false}
-          setTunnelSoundEnabled={() => {}}
-          onSelectBackgroundImage={handleSelectBackgroundImage}
-          onClearBackgroundImage={handleClearBackgroundImage}
-        />
-      </div>
+    </div>
     </div>
   );
 }

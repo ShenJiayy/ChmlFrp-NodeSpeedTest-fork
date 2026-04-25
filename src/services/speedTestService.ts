@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { tunnelService, type TempTunnelInfo } from "./tunnelService";
 import { frpcService } from "./frpcService";
-import { getStoredUser } from "./api";
+import { getStoredUser, fetchNodeInfo } from "./api";
 
 export interface SpeedTestResult {
   success: boolean;
@@ -86,7 +86,11 @@ export class SpeedTestService {
         throw new Error("请先登录");
       }
 
-      this.addLog("开始隧道速度测试", "info");
+      if (testLatency && !testSpeed) {
+        return await this.runLatencyOnlyTest(nodeName, onProgress);
+      }
+
+      this.addLog("开始节点速度测试", "info");
       this.addLog(`目标节点: ${nodeName}`, "info");
 
       this.updateProgress(onProgress, "checking_frpc", "正在检查 frpc...");
@@ -290,6 +294,46 @@ export class SpeedTestService {
       this.addLog("TCP 服务器已停止", "success");
     } catch (error) {
       this.addLog(`停止 TCP 服务器失败: ${error}`, "error");
+    }
+  }
+
+  private async runLatencyOnlyTest(
+    nodeName: string,
+    onProgress: SpeedTestCallback,
+  ): Promise<SpeedTestResult> {
+    try {
+      this.addLog("开始延迟测试（直连模式）", "info");
+      this.addLog(`目标节点: ${nodeName}`, "info");
+
+      this.updateProgress(onProgress, "testing_latency", "正在获取节点信息...");
+
+      const nodeInfo = await fetchNodeInfo(nodeName);
+      const nodeIp = nodeInfo.ip || nodeInfo.realIp || nodeInfo.real_IP;
+      if (!nodeIp) {
+        throw new Error("无法获取节点IP地址");
+      }
+      const nodePort = nodeInfo.port || 7000;
+      this.addLog(`节点地址: ${nodeIp}:${nodePort}`, "info");
+
+      if (this.abortController?.signal.aborted) {
+        throw new Error("测试已取消");
+      }
+
+      this.updateProgress(onProgress, "testing_latency", "正在测试延迟...");
+      this.addLog("开始延迟测试", "info");
+
+      const latency = await this.testLatency(nodeIp, nodePort);
+      this.addLog(`延迟测试完成: ${latency}ms`, "success");
+
+      this.updateProgress(onProgress, "completed", "测试完成");
+      this.addLog("延迟测试完成", "success");
+
+      return { success: true, latency };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.addLog(`错误: ${errorMessage}`, "error");
+      this.updateProgress(onProgress, "error", errorMessage);
+      return { success: false, error: errorMessage };
     }
   }
 

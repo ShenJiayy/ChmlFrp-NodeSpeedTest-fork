@@ -1,18 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
-use tauri::Manager;
+use crate::utils::get_app_data_dir;
 
 #[tauri::command]
 pub async fn copy_background_video(
-    app_handle: tauri::AppHandle,
     source_path: String,
 ) -> Result<String, String> {
-    let app_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let data_dir = get_app_data_dir()?;
 
-    let background_dir = app_dir.join("backgrounds");
+    let background_dir = data_dir.join("backgrounds");
     fs::create_dir_all(&background_dir).map_err(|e| e.to_string())?;
 
     let source = PathBuf::from(&source_path);
@@ -33,15 +29,11 @@ pub async fn copy_background_video(
 
 #[tauri::command]
 pub async fn copy_background_image(
-    app_handle: tauri::AppHandle,
     source_path: String,
 ) -> Result<String, String> {
-    let app_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let data_dir = get_app_data_dir()?;
 
-    let background_dir = app_dir.join("backgrounds");
+    let background_dir = data_dir.join("backgrounds");
     fs::create_dir_all(&background_dir).map_err(|e| e.to_string())?;
 
     let source = PathBuf::from(&source_path);
@@ -62,21 +54,17 @@ pub async fn copy_background_image(
 
 #[tauri::command]
 pub async fn get_background_video_path(
-    app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
-    let app_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let data_dir = get_app_data_dir()?;
 
-    let background_dir = app_dir.join("backgrounds");
-    
+    let background_dir = data_dir.join("backgrounds");
+
     if !background_dir.exists() {
         return Ok(None);
     }
 
     let entries = fs::read_dir(&background_dir).map_err(|e| e.to_string())?;
-    
+
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();

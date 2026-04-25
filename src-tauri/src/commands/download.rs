@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::path::Path;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 const MAX_RETRIES: u32 = 5;
 const PROGRESS_EMIT_THRESHOLD: u64 = 100 * 1024;
@@ -141,7 +141,7 @@ pub async fn download_frpc(app_handle: tauri::AppHandle) -> Result<String, Strin
     let expected_hash = download_info.hash;
     let expected_size = download_info.size;
 
-    let frpc_path = app_data_frpc_path(&app_handle)?;
+    let frpc_path = app_data_frpc_path()?;
     if let Some(parent) = frpc_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }

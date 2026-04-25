@@ -9,15 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, CheckCircle2, Loader2, Info, AlertTriangle, Zap, Minimize2 } from "lucide-react";
-import { speedTestService, type LogEntry, type SpeedTestProgress } from "@/services/speedTestService";
-
-interface BatchSpeedTestDialogProps {
-  isOpen: boolean;
-  onClose: (isMinimized?: boolean) => void;
-  nodeNames: string[];
-  onTestComplete?: (results: Map<string, { latency?: number; downloadSpeed?: number; error?: string }>) => void;
-}
+import { Gauge, Clock, Download, AlertCircle, CheckCircle2, Loader2, Info, AlertTriangle, Zap, Minimize2 } from "lucide-react";
+import { speedTestService, type SpeedTestProgress, type SpeedTestResult, type LogEntry } from "@/services/speedTestService";
 
 interface TestConfig {
   testLatency: boolean;
@@ -73,6 +66,46 @@ export function getBatchTestState(): BatchTestState {
   return globalState;
 }
 
+const stageProgress: Record<string, number> = {
+  idle: 0,
+  checking_frpc: 5,
+  downloading_frpc: 15,
+  starting_tcp_server: 30,
+  creating_tunnel: 40,
+  starting_frpc: 50,
+  testing_latency: 70,
+  testing_speed: 85,
+  cleaning_up: 95,
+  completed: 100,
+  error: 0,
+};
+
+const stageMessages: Record<string, string> = {
+  idle: "准备测试",
+  checking_frpc: "正在检查 frpc...",
+  downloading_frpc: "正在下载 frpc...",
+  starting_tcp_server: "正在启动 TCP 服务器...",
+  creating_tunnel: "正在创建隧道...",
+  starting_frpc: "正在启动 frpc 客户端...",
+  testing_latency: "正在测试延迟...",
+  testing_speed: "正在测试下载速度...",
+  cleaning_up: "正在清理资源...",
+  completed: "测试完成",
+  error: "测试失败",
+};
+
+const stageLabels: Record<string, string> = {
+  idle: "准备中",
+  creating_tunnel: "创建隧道",
+  starting_frpc: "启动frpc",
+  connecting: "等待连接",
+  testing_latency: "测试延迟",
+  testing_speed: "测试速度",
+  cleaning_up: "清理资源",
+  completed: "完成",
+  error: "错误",
+};
+
 function LogItem({ log }: { log: LogEntry }) {
   const getIcon = () => {
     switch (log.type) {
@@ -108,22 +141,28 @@ function LogItem({ log }: { log: LogEntry }) {
   );
 }
 
-const stageLabels: Record<string, string> = {
-  idle: "准备中",
-  creating_tunnel: "创建隧道",
-  starting_frpc: "启动frpc",
-  connecting: "等待连接",
-  testing_latency: "测试延迟",
-  testing_speed: "测试速度",
-  cleaning_up: "清理资源",
-  completed: "完成",
-  error: "错误",
-};
+function formatSpeed(speedMbps: number): string {
+  if (speedMbps >= 1000) {
+    return `${(speedMbps / 1000).toFixed(2)} Gbps`;
+  }
+  return `${speedMbps.toFixed(2)} Mbps`;
+}
 
-export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplete }: BatchSpeedTestDialogProps) {
+interface SpeedTestDialogProps {
+  isOpen: boolean;
+  onClose: (isMinimized?: boolean) => void;
+  nodeNames: string[];
+  onTestComplete?: (results: Map<string, { latency?: number; downloadSpeed?: number; error?: string }>) => void;
+}
+
+export function SpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplete }: SpeedTestDialogProps) {
+  const isSingleMode = nodeNames.length === 1;
   const [config, setConfig] = useState<TestConfig>(globalState.config);
   const [isRunning, setIsRunning] = useState(false);
+  const [speedTestSizeInput, setSpeedTestSizeInput] = useState<string>(config.speedTestSize.toString());
   const [progress, setProgress] = useState<BatchTestState["progress"]>(null);
+  const [singleNodeProgress, setSingleNodeProgress] = useState<SpeedTestProgress>({ stage: "idle", message: "准备测试", logs: [] });
+  const [singleNodeResult, setSingleNodeResult] = useState<SpeedTestResult | null>(null);
   const [results, setResults] = useState<NodeResult[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const stopRef = useRef(false);
@@ -149,8 +188,17 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
       setConfig(globalState.config);
       stopRef.current = false;
       setIsMinimizing(false);
+      setSpeedTestSizeInput(globalState.config.speedTestSize.toString());
+      if (isSingleMode && !globalState.isRunning) {
+        setSingleNodeProgress({ stage: "idle", message: "准备测试", logs: [] });
+        setSingleNodeResult(null);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, isSingleMode]);
+
+  useEffect(() => {
+    setSpeedTestSizeInput(config.speedTestSize.toString());
+  }, [config.speedTestSize]);
 
   const addLog = useCallback((message: string, type: LogEntry["type"] = "info") => {
     const entry: LogEntry = { timestamp: Date.now(), message, type };
@@ -176,7 +224,12 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
     setLogs([]);
     stopRef.current = false;
 
-    addLog(`开始批量测试，共 ${nodeNames.length} 个节点`, "info");
+    if (isSingleMode) {
+      setSingleNodeProgress({ stage: "idle", message: "准备测试", logs: [] });
+      setSingleNodeResult(null);
+    }
+
+    addLog(`开始测试，共 ${nodeNames.length} 个节点`, "info");
     addLog(`配置: 延迟测试=${config.testLatency ? "是" : "否"}, 速度测试=${config.testSpeed ? "是" : "否"}${config.testSpeed ? `, 大小=${config.speedTestSize}MB` : ""}`, "info");
 
     const newResults: NodeResult[] = [];
@@ -200,6 +253,9 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
         const result = await speedTestService.runSpeedTest(
           nodeName,
           (p: SpeedTestProgress) => {
+            if (isSingleMode) {
+              setSingleNodeProgress(p);
+            }
             const stageLabel = stageLabels[p.stage] || p.stage;
             const progressData = {
               current: i + 1,
@@ -220,6 +276,10 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
           }
         );
 
+        if (isSingleMode) {
+          setSingleNodeResult(result);
+        }
+
         if (result.success) {
           const nodeResult: NodeResult = {
             nodeName,
@@ -228,7 +288,7 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
             success: true,
           };
           newResults.push(nodeResult);
-          
+
           const latencyStr = result.latency != null ? `${result.latency.toFixed(0)}ms` : "-";
           const speedStr = result.downloadSpeed != null ? `${result.downloadSpeed.toFixed(2)}Mbps` : "-";
           addLog(`[${i + 1}/${total}] ${nodeName} 完成 - 延迟: ${latencyStr}, 速度: ${speedStr}`, "success");
@@ -263,7 +323,7 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
     setProgress(null);
     notifyListeners();
 
-    if (!stopRef.current && onTestCompleteRef.current) {
+    if (onTestCompleteRef.current) {
       const resultMap = new Map<string, { latency?: number; downloadSpeed?: number; error?: string }>();
       newResults.forEach(r => {
         resultMap.set(r.nodeName, {
@@ -276,17 +336,18 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
     }
 
     const successCount = newResults.filter(r => r.success).length;
-    addLog(`测试完成: ${successCount}/${total} 成功`, successCount === total ? "success" : "warning");
-  }, [nodeNames, config, addLog]);
+    if (stopRef.current) {
+      addLog(`测试已停止: 已完成 ${newResults.length}/${total} 个节点，${successCount} 成功`, "warning");
+    } else {
+      addLog(`测试完成: ${successCount}/${total} 成功`, successCount === total ? "success" : "warning");
+    }
+  }, [nodeNames, config, addLog, isSingleMode]);
 
   const handleStop = useCallback(() => {
     stopRef.current = true;
     speedTestService.cancel();
     speedTestService.forceCleanup();
-    globalState.isRunning = false;
-    globalState.progress = null;
-    notifyListeners();
-    addLog("已停止测试", "warning");
+    addLog("正在停止测试...", "warning");
   }, [addLog]);
 
   const [isMinimizing, setIsMinimizing] = useState(false);
@@ -320,145 +381,280 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
   const successCount = results.filter(r => r.success).length;
   const failCount = results.filter(r => !r.success).length;
 
+  const singleCurrentProgress = (() => {
+    if (singleNodeProgress.progress !== undefined && singleNodeProgress.progress !== null) {
+      const stageStart = stageProgress[singleNodeProgress.stage] ?? 0;
+      const stageKeys = Object.keys(stageProgress);
+      const stageIndex = stageKeys.indexOf(singleNodeProgress.stage);
+      const nextStageStart = stageIndex < stageKeys.length - 1 ? stageProgress[stageKeys[stageIndex + 1]] : 100;
+      const stageRange = nextStageStart - stageStart;
+      return Math.min(100, stageStart + (singleNodeProgress.progress / 100) * stageRange);
+    }
+    return stageProgress[singleNodeProgress.stage] ?? 0;
+  })();
+
+  const renderConfigPanel = () => (
+    <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="testLatency"
+            checked={config.testLatency}
+            onCheckedChange={(checked) =>
+              setConfig(prev => ({ ...prev, testLatency: !!checked }))
+            }
+          />
+          <label htmlFor="testLatency" className="text-sm cursor-pointer">
+            测试延迟
+          </label>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="testSpeed"
+            checked={config.testSpeed}
+            onCheckedChange={(checked) =>
+              setConfig(prev => ({ ...prev, testSpeed: !!checked }))
+            }
+          />
+          <label htmlFor="testSpeed" className="text-sm cursor-pointer">
+            测试下载速度
+          </label>
+        </div>
+
+        {config.testSpeed && (
+          <div className="flex items-center gap-2 pl-6">
+            <label className="text-sm text-muted-foreground whitespace-nowrap">
+              测试大小:
+            </label>
+            <Input
+              type="number"
+              min={1}
+              max={100000}
+              value={speedTestSizeInput}
+              onChange={(e) =>
+                setSpeedTestSizeInput(e.target.value)
+              }
+              onBlur={(e) => {
+                const value = e.target.value;
+                const parsedValue = value === "" ? 100 : parseInt(value) || 100;
+                const finalValue = Math.max(1, Math.min(100000, parsedValue));
+                setConfig(prev => ({ ...prev, speedTestSize: finalValue }));
+                setSpeedTestSizeInput(finalValue.toString());
+              }}
+              className="w-20 h-8"
+            />
+            <span className="text-sm text-muted-foreground">MB</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div className="flex items-start gap-2">
+          <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-blue-700 dark:text-blue-300">
+            <p className="font-medium mb-1">测试说明</p>
+            <p>• 仅测试延迟：直连节点7000端口，无需隧道配额</p>
+            <p>• 包含速度测试：需要创建隧道，请确保至少有1个空闲配额</p>
+            {isSingleMode && (
+              <p className="mt-1">速度测试在本机同时上传和下载，下载速度受限于上传带宽。</p>
+            )}
+            {!isSingleMode && (
+              <p className="mt-1">批量测试将逐个节点进行，每个节点会用时15-30秒，具体时间取决于本机环境和节点质量。</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderSingleRunning = () => (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        <span className="text-sm font-medium">{stageMessages[singleNodeProgress.stage] || singleNodeProgress.message}</span>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>总体进度</span>
+          <span>{singleCurrentProgress.toFixed(0)}%</span>
+        </div>
+        <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
+          <div
+            className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${singleCurrentProgress}%` }}
+          />
+        </div>
+      </div>
+
+      {singleNodeProgress.logs.length > 0 && (
+        <div className="border rounded-lg p-3 bg-muted/30 max-h-48 overflow-y-auto">
+          <div className="text-xs font-medium text-muted-foreground mb-2">日志</div>
+          <div className="space-y-1.5">
+            {singleNodeProgress.logs.map((log, index) => (
+              <LogItem key={index} log={log} />
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSingleResult = () => {
+    if (!singleNodeResult) return null;
+    return (
+      <div className="space-y-3">
+        {singleNodeResult.success ? (
+          <>
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-medium">测试成功</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {singleNodeResult.latency !== undefined && (
+                <div className="flex flex-col p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                    <Clock className="w-3 h-3" />
+                    延迟
+                  </div>
+                  <span className="text-lg font-semibold">
+                    {singleNodeResult.latency.toFixed(0)}ms
+                  </span>
+                </div>
+              )}
+
+              {singleNodeResult.downloadSpeed !== undefined && (
+                <div className="flex flex-col p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                    <Download className="w-3 h-3" />
+                    带宽速度
+                  </div>
+                  <span className="text-lg font-semibold">
+                    {formatSpeed(singleNodeResult.downloadSpeed)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-700 dark:text-blue-300">
+                  <p>本测试在本机同时进行上传和下载，实际下载速度受限于本机上传带宽。</p>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start gap-2 text-destructive">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div>
+              <span className="font-medium">测试失败</span>
+              <p className="text-sm text-muted-foreground mt-1">
+                {singleNodeResult.error}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {singleNodeProgress.logs.length > 0 && (
+          <div className="border rounded-lg p-3 bg-muted/30 max-h-32 overflow-y-auto">
+            <div className="text-xs font-medium text-muted-foreground mb-2">日志</div>
+            <div className="space-y-1.5">
+              {singleNodeProgress.logs.map((log, index) => (
+                <LogItem key={index} log={log} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderBatchRunning = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          <span className="text-sm font-medium">
+            正在测试 ({progress!.current}/{progress!.total})
+          </span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleMinimize}
+          className="h-7 px-2"
+        >
+          <Minimize2 className="w-3.5 h-3.5 mr-1" />
+          最小化
+        </Button>
+      </div>
+
+      <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+        <div className="text-sm font-medium truncate">{progress!.currentNodeName}</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{progress!.stage}</span>
+          {progress!.nodeMessage && (
+            <>
+              <span>-</span>
+              <span>{progress!.nodeMessage}</span>
+            </>
+          )}
+        </div>
+        {progress!.nodeProgress != null && progress!.nodeProgress > 0 && (
+          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-blue-500 h-full rounded-full transition-all duration-200"
+              style={{ width: `${progress!.nodeProgress * 100}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>总体进度</span>
+          <span>{progress!.current}/{progress!.total} ({((progress!.current / progress!.total) * 100).toFixed(0)}%)</span>
+        </div>
+        <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
+          <div
+            className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${(progress!.current / progress!.total) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className={isSingleMode ? "max-w-lg" : "max-w-2xl max-h-[90vh] flex flex-col"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            批量速度测试
+            {isSingleMode ? <Gauge className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+            {isSingleMode ? "节点测试" : "批量测试"}
           </DialogTitle>
           <DialogDescription>
-            共 {nodeNames.length} 个节点
+            {isSingleMode ? `节点: ${nodeNames[0]}` : `共 ${nodeNames.length} 个节点`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4">
-          {!isRunning && results.length === 0 && (
-            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="batchTestLatency"
-                    checked={config.testLatency}
-                    onCheckedChange={(checked) =>
-                      setConfig(prev => ({ ...prev, testLatency: !!checked }))
-                    }
-                  />
-                  <label htmlFor="batchTestLatency" className="text-sm cursor-pointer">
-                    测试延迟
-                  </label>
-                </div>
+        <div className={isSingleMode ? "space-y-4" : "flex-1 overflow-hidden flex flex-col gap-4"}>
+          {!isRunning && (isSingleMode ? !singleNodeResult : results.length === 0) && renderConfigPanel()}
 
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="batchTestSpeed"
-                    checked={config.testSpeed}
-                    onCheckedChange={(checked) =>
-                      setConfig(prev => ({ ...prev, testSpeed: !!checked }))
-                    }
-                  />
-                  <label htmlFor="batchTestSpeed" className="text-sm cursor-pointer">
-                    测试下载速度
-                  </label>
-                </div>
+          {isRunning && (isSingleMode ? renderSingleRunning() : (progress && renderBatchRunning()))}
 
-                {config.testSpeed && (
-                  <div className="flex items-center gap-2 pl-6">
-                    <label className="text-sm text-muted-foreground whitespace-nowrap">
-                      测试大小:
-                    </label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100000}
-                      value={config.speedTestSize}
-                      onChange={(e) =>
-                        setConfig(prev => ({
-                          ...prev,
-                          speedTestSize: Math.max(1, Math.min(100000, parseInt(e.target.value) || 100))
-                        }))
-                      }
-                      className="w-20 h-8"
-                    />
-                    <span className="text-sm text-muted-foreground">MB</span>
-                  </div>
-                )}
-              </div>
+          {!isRunning && isSingleMode && singleNodeResult && renderSingleResult()}
 
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-blue-700 dark:text-blue-300">
-                    <p className="font-medium mb-1">全部节点测试说明</p>
-                    <p className="mt-1">请确保至少有2个隧道配额没有使用，否则测试将失败。</p>
-                    <p className="mt-1">批量测试将逐个节点进行，可能需要10+分钟，请耐心等待。</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isRunning && progress && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                  <span className="text-sm font-medium">
-                    正在测试 ({progress.current}/{progress.total})
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleMinimize}
-                  className="h-7 px-2"
-                >
-                  <Minimize2 className="w-3.5 h-3.5 mr-1" />
-                  最小化
-                </Button>
-              </div>
-
-              <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-                <div className="text-sm font-medium truncate">{progress.currentNodeName}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{progress.stage}</span>
-                  {progress.nodeMessage && (
-                    <>
-                      <span>-</span>
-                      <span>{progress.nodeMessage}</span>
-                    </>
-                  )}
-                </div>
-                {progress.nodeProgress != null && progress.nodeProgress > 0 && (
-                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-blue-500 h-full rounded-full transition-all duration-200"
-                      style={{ width: `${progress.nodeProgress * 100}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>总体进度</span>
-                  <span>{progress.current}/{progress.total} ({((progress.current / progress.total) * 100).toFixed(0)}%)</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
-                  <div
-                    className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {logs.length > 0 && (
+          {logs.length > 0 && !(isSingleMode && isRunning) && (
             <div className="border rounded-lg p-3 bg-muted/30 max-h-40 overflow-y-auto">
               <div className="text-xs font-medium text-muted-foreground mb-2">
-                日志 ({logs.length}) - 成功: {successCount}, 失败: {failCount}
+                日志 ({logs.length})
+                {!isSingleMode && ` - 成功: ${successCount}, 失败: ${failCount}`}
               </div>
               <div className="space-y-1.5">
                 {logs.map((log, index) => (
@@ -474,16 +670,21 @@ export function BatchSpeedTestDialog({ isOpen, onClose, nodeNames, onTestComplet
           <Button variant="outline" onClick={handleClose}>
             {isRunning ? "取消" : "关闭"}
           </Button>
-          {!isRunning && results.length === 0 && (
+          {!isRunning && (isSingleMode ? !singleNodeResult?.success : results.length === 0) && (
             <Button
               onClick={handleStartTest}
               disabled={!config.testLatency && !config.testSpeed}
             >
-              <Zap className="w-4 h-4 mr-1.5" />
+              {isSingleMode ? <Gauge className="w-4 h-4 mr-1.5" /> : <Zap className="w-4 h-4 mr-1.5" />}
               开始测试
             </Button>
           )}
-          {!isRunning && results.length > 0 && (
+          {!isRunning && isSingleMode && singleNodeResult && (
+            <Button onClick={handleStartTest}>
+              重新测试
+            </Button>
+          )}
+          {!isRunning && !isSingleMode && results.length > 0 && (
             <Button onClick={handleStartTest}>
               重新测试
             </Button>

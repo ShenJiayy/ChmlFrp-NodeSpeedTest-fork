@@ -9,13 +9,21 @@ pub fn frpc_file_name() -> &'static str {
     }
 }
 
-pub fn app_data_frpc_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
-    Ok(app_data_dir.join(frpc_file_name()))
+pub fn get_app_data_dir() -> Result<PathBuf, String> {
+    let exe_path = std::env::current_exe().map_err(|e| format!("获取可执行文件路径失败: {}", e))?;
+    let exe_dir = exe_path.parent().ok_or("无法获取可执行文件目录")?;
+    let data_dir = exe_dir.join("data");
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
+    Ok(data_dir)
+}
+
+pub fn app_data_frpc_path() -> Result<PathBuf, String> {
+    let data_dir = get_app_data_dir()?;
+    Ok(data_dir.join(frpc_file_name()))
 }
 
 pub fn resolve_frpc_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_path = app_data_frpc_path(app_handle)?;
+    let app_path = app_data_frpc_path()?;
     if app_path.exists() {
         return Ok(app_path);
     }

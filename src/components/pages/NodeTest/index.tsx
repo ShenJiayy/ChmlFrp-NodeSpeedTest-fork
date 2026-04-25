@@ -15,13 +15,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Network, Play, RefreshCw, CheckCircle2, XCircle, Clock, Filter, History, Globe, Users, ArrowUpDown, ArrowUp, ArrowDown, Search, CheckSquare, Square, SquareX, Gauge, Download, Zap } from "lucide-react";
+import { Network, Play, RefreshCw, CheckCircle2, XCircle, Clock, Filter, History, Globe, Users, ArrowUpDown, ArrowUp, ArrowDown, Search, CheckSquare, Square, SquareX, Gauge, Download, Zap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchNodes, fetchNodeInfo, type Node, type StoredUser } from "@/services/api";
 import { invoke } from "@tauri-apps/api/core";
 import { getInitialEffectType, type EffectType } from "@/lib/settings-utils";
-import { SpeedTestDialog } from "@/components/dialogs/SpeedTestDialog";
-import { BatchSpeedTestDialog, getBatchTestState, subscribeBatchTestState } from "@/components/dialogs/BatchSpeedTestDialog";
+import { SpeedTestDialog, getBatchTestState, subscribeBatchTestState } from "@/components/dialogs/BatchSpeedTestDialog";
 import { BatchTestFloatingWidget } from "@/components/dialogs/BatchTestFloatingWidget";
 import { NodeHistoryDialog } from "@/components/dialogs/NodeHistoryDialog";
 import { addTestHistory } from "@/services/testHistoryService";
@@ -100,7 +99,6 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [speedTestNode, setSpeedTestNode] = useState<NodeWithTest | null>(null);
   const [batchTestNodes, setBatchTestNodes] = useState<NodeWithTest[] | null>(null);
   const [showBatchTestDialog, setShowBatchTestDialog] = useState(false);
   const [historyNode, setHistoryNode] = useState<{ node: NodeWithTest; type: "latency" | "speed" } | null>(null);
@@ -109,11 +107,11 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
   useEffect(() => {
     return subscribeBatchTestState(() => {
       const state = getBatchTestState();
-      if (!state.isRunning && showBatchTestDialog) {
-        setShowBatchTestDialog(false);
+      if (!state.isRunning && testingAll) {
+        setTestingAll(false);
       }
     });
-  }, [showBatchTestDialog]);
+  }, [testingAll]);
 
   const saveTestResults = useCallback((nodesToSave: NodeWithTest[]) => {
     const results = nodesToSave
@@ -326,13 +324,18 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
     return result;
   }, [nodes, regionFilter, userTypeFilter, sortField, sortDirection, searchQuery]);
 
+  // 计算当前可见节点中的选中数量
+  const visibleSelectedCount = useMemo(() => {
+    return filteredNodes.filter(n => selectedNodeIds.has(n.id)).length;
+  }, [filteredNodes, selectedNodeIds]);
+
   const toggleSelectAll = useCallback(() => {
-    if (selectedNodeIds.size === filteredNodes.length) {
+    if (visibleSelectedCount === filteredNodes.length) {
       setSelectedNodeIds(new Set());
     } else {
       setSelectedNodeIds(new Set(filteredNodes.map((n) => n.id)));
     }
-  }, [filteredNodes, selectedNodeIds.size]);
+  }, [filteredNodes, visibleSelectedCount]);
 
   const handleRowClick = useCallback(
     (e: React.MouseEvent, nodeId: number, index: number) => {
@@ -426,7 +429,7 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
   }, [user, addToHistory, saveTestResults]);
 
   const testSelectedNodes = useCallback(async () => {
-    if (!user || selectedNodeIds.size === 0) return;
+    if (!user || visibleSelectedCount === 0) return;
 
     try {
       setTestingAll(true);
@@ -450,10 +453,10 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
       setTestingAll(false);
       stopTestingRef.current = false;
     }
-  }, [user, selectedNodeIds, filteredNodes, testSingleNode]);
+  }, [user, filteredNodes, selectedNodeIds, testSingleNode, visibleSelectedCount]);
 
   const openBatchSpeedTestWithNodes = useCallback(() => {
-    const nodesToTest = selectedNodeIds.size > 0 
+    const nodesToTest = visibleSelectedCount > 0 
       ? filteredNodes.filter((n) => selectedNodeIds.has(n.id))
       : filteredNodes;
     
@@ -464,7 +467,7 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
     
     setBatchTestNodes(nodesToTest);
     setShowBatchTestDialog(true);
-  }, [filteredNodes, selectedNodeIds]);
+  }, [filteredNodes, selectedNodeIds, visibleSelectedCount]);
 
   const getStatusBadge = (node: NodeWithTest) => {
     switch (node.testStatus) {
@@ -553,58 +556,37 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
               </>
             )}
           </Button>
-          {!showHistory && selectedNodeIds.size > 0 && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => void testSelectedNodes()}
-                disabled={testingAll || loading}
-                className="h-8 px-3 text-xs"
-              >
-                {testingAll ? (
-                  <>
-                    <RefreshCw className="animate-spin h-3.5 w-3.5 mr-1.5" />
-                    测试中...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-3.5 w-3.5 mr-1.5" />
-                    延迟测试 ({selectedNodeIds.size})
-                  </>
-                )}
-              </Button>
-              <Button
-            size="sm"
-            variant="outline"
-            onClick={openBatchSpeedTestWithNodes}
-            disabled={testingAll || loading}
-            className="h-8 px-3 text-xs"
-          >
-                <Zap className="h-3.5 w-3.5 mr-1.5" />
-                速度测试 ({selectedNodeIds.size})
-              </Button>
-            </>
-          )}
-          {!showHistory && selectedNodeIds.size === 0 && (
+          {!showHistory && (
             testingAll ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={stopTesting}
-                className="h-8 px-3 text-xs"
-              >
-                <SquareX className="h-3.5 w-3.5 mr-1.5" />
-                停止测试
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowBatchTestDialog(true)}
+                  className="h-8 px-3 text-xs"
+                >
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  测试中...
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={stopTesting}
+                  className="h-8 px-3 text-xs"
+                >
+                  <SquareX className="h-3.5 w-3.5 mr-1.5" />
+                  停止
+                </Button>
+              </>
             ) : (
               <Button
                 size="sm"
                 onClick={openBatchSpeedTestWithNodes}
-                disabled={loading || filteredNodes.length === 0}
+                disabled={loading || (visibleSelectedCount === 0 && filteredNodes.length === 0)}
                 className="h-8 px-3 text-xs"
               >
-                <Play className="h-3.5 w-3.5 mr-1.5" />
-                全部速度测试
+                <Zap className="h-3.5 w-3.5 mr-1.5" />
+                {visibleSelectedCount > 0 ? `节点测试 (${visibleSelectedCount})` : "全部测试"}
               </Button>
             )
           )}
@@ -896,7 +878,10 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSpeedTestNode(node)}
+                        onClick={() => {
+                          setBatchTestNodes([node]);
+                          setShowBatchTestDialog(true);
+                        }}
                         disabled={node.testStatus === "testing"}
                         className="h-7 px-2 text-xs"
                         title="速度测试"
@@ -913,37 +898,6 @@ export function NodeTest({ user, onTestingChange }: NodeTestProps) {
       )}
 
       <SpeedTestDialog
-        isOpen={speedTestNode !== null}
-        onClose={() => setSpeedTestNode(null)}
-        nodeName={speedTestNode?.name || ""}
-        onTestComplete={(result) => {
-          if (speedTestNode) {
-            addTestHistory({
-              nodeName: speedTestNode.name,
-              nodeId: speedTestNode.id,
-              timestamp: Date.now(),
-              latency: result.latency,
-              downloadSpeed: result.downloadSpeed,
-              success: true,
-            });
-            const updatedNodes: NodeWithTest[] = nodesRef.current.map((n) =>
-              n.id === speedTestNode.id
-                ? {
-                    ...n,
-                    testStatus: "success" as const,
-                    latency: result.latency,
-                    downloadSpeed: result.downloadSpeed,
-                    lastTested: Date.now(),
-                  }
-                : n
-            );
-            setNodes(updatedNodes);
-            saveTestResults(updatedNodes);
-          }
-        }}
-      />
-
-      <BatchSpeedTestDialog
         isOpen={showBatchTestDialog && batchTestNodes !== null}
         onClose={(isMinimized?: boolean) => {
           setShowBatchTestDialog(false);
