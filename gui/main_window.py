@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
 
+from services.api_service import APIService
 from .pages.node_test_page import NodeTestPage
 from .pages.settings_page import SettingsPage
 from .widgets.title_bar import TitleBar
@@ -16,8 +17,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ChmlFrp Node Speed Test")
         self.setMinimumSize(1000, 700)
 
-        # Initialize user data
-        self.user = None  # Will be loaded from settings
+        # Initialize services and user data
+        self.api_service = APIService()
+        self.user = self.api_service.get_stored_user()
 
         # Create central widget
         central_widget = QWidget()
@@ -48,8 +50,8 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.stacked_widget)
 
         # Create pages
-        self.node_test_page = NodeTestPage(self.user)
-        self.settings_page = SettingsPage()
+        self.node_test_page = NodeTestPage(self.user, self.api_service)
+        self.settings_page = SettingsPage(self.api_service)
 
         # Add pages to stack
         self.stacked_widget.addWidget(self.node_test_page)
@@ -63,6 +65,11 @@ class MainWindow(QMainWindow):
 
         # Load settings and user data
         self.load_settings()
+
+    def load_settings(self):
+        self.user = self.api_service.get_stored_user()
+        self.node_test_page.set_user(self.user)
+        self.settings_page.set_user(self.user)
 
     def on_sidebar_item_clicked(self, item):
         text = item.text()

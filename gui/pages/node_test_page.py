@@ -12,14 +12,18 @@ from gui.dialogs.batch_test_dialog import BatchTestDialog
 from gui.dialogs.node_history_dialog import NodeHistoryDialog
 
 class NodeTestPage(QWidget):
-    def __init__(self, user):
+    def __init__(self, user, api_service=None):
         super().__init__()
         self.user = user
         self.nodes = []
-        self.api_service = APIService()
+        self.api_service = api_service or APIService()
         self.speed_test_service = SpeedTestService()
 
         self.init_ui()
+        self.load_nodes()
+
+    def set_user(self, user):
+        self.user = user
         self.load_nodes()
 
     def init_ui(self):

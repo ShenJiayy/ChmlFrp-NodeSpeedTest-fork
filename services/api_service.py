@@ -29,7 +29,34 @@ class APIService:
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
 
+    def login_with_token(self, token: str) -> Dict[str, str]:
+        if token.startswith("Bearer "):
+            token = token[7:].strip()
+        if not token:
+            raise ValueError("令牌不能为空")
+        user = {
+            'accessToken': token,
+            'usertoken': token,
+        }
+        self.save_user(user)
+        return user
+
+    def clear_user(self):
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+        config = {}
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        config['user'] = None
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
     def ensure_authenticated_user(self, token: Optional[str] = None):
+        if token:
+            if token.startswith("Bearer "):
+                token = token[7:].strip()
+            return {'accessToken': token, 'legacyToken': None}
+
         user = self.get_stored_user()
         if not user or not user.get('accessToken'):
             raise Exception("用户未登录")
